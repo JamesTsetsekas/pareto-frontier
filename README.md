@@ -10,8 +10,8 @@ Interactive score-vs-cost chart for AI models, with the Pareto frontier drawn on
 - Each model is one line, with a point per reasoning-effort level (Low → Max). Hover a model to label its effort levels
 - Real provider logos in the end labels, legend, tooltips and table. Each provider has one brand hue, and its models get different shades of it
 - Pareto frontier computed from the models on the chart, or from every model on the benchmark. Frontier points are enlarged and haloed
-- Hover shows a crosshair with axis readouts and a tooltip with score, cost, cost per point, and which frontier model beats it
-- Click a point to pin its tooltip: show only that model, remove it, or open its ARC Prize results
+- Hover shows a crosshair with axis readouts and a compact tooltip (score, cost, and which frontier model beats it). The tooltip places itself where it hides the least of the hovered model's line and effort labels
+- Click a point to pin the full tooltip: cost per point, ARC Prize's notes, and actions to show only that model, remove it, or open its ARC Prize results
 - Models are grouped by provider (collapsible, with all/none toggles), searchable, and sortable. There are presets (Recommended, Frontier, Newest 12, All) and a release-date filter
 - Zoom and pan (scroll or pinch, drag, double-click to reset), log or linear cost axis
 - Export the chart as a PNG or the visible points as CSV

@@ -842,17 +842,25 @@
     const { p } = hit;
     const s = p.series;
     const { frontier, fSet, m } = ctx;
+    // Hover shows a compact card so it hides less of the chart; pinning shows everything.
     let flag = "";
     if (state.frontierMode !== "off" && !s.ref) {
       if (fSet.has(p)) {
-        flag = `<span>◆</span><span><b>On the Pareto frontier.</b> Nothing scores higher for less.</span>`;
+        flag = pinned
+          ? `<span>◆</span><span><b>On the Pareto frontier.</b> Nothing scores higher for less.</span>`
+          : `<span>◆</span><span><b>On the Pareto frontier</b></span>`;
       } else {
         const atBudget = frontier.filter((f) => f.cost <= p.cost).sort((a, b) => b.score - a.score)[0];
         const cheaper = frontier.filter((f) => f.score >= p.score).sort((a, b) => a.cost - b.cost)[0];
-        const parts = [];
-        if (atBudget) parts.push(`<b>${esc(atBudget.series.name)}${atBudget.effort ? " (" + esc(atBudget.effort) + ")" : ""}</b> scores ${fmtPct(atBudget.score)} for ${fmtCost(atBudget.cost)}`);
-        if (cheaper && cheaper !== atBudget && cheaper.cost < p.cost) parts.push(`matches this score for ${fmtCost(cheaper.cost)} with <b>${esc(cheaper.series.name)}</b>`);
-        if (parts.length) flag = `<span>↘</span><span>Dominated. ${parts.join("; ")}.</span>`;
+        const tag = (f) => `<b>${esc(f.series.name)}${f.effort ? " (" + esc(f.effort) + ")" : ""}</b>`;
+        if (!pinned) {
+          if (atBudget || cheaper) flag = `<span>↘</span><span>Dominated by ${tag(atBudget || cheaper)}</span>`;
+        } else {
+          const parts = [];
+          if (atBudget) parts.push(`${tag(atBudget)} scores ${fmtPct(atBudget.score)} for ${fmtCost(atBudget.cost)}`);
+          if (cheaper && cheaper !== atBudget && cheaper.cost < p.cost) parts.push(`matches this score for ${fmtCost(cheaper.cost)} with <b>${esc(cheaper.series.name)}</b>`);
+          if (parts.length) flag = `<span>↘</span><span>Dominated. ${parts.join("; ")}.</span>`;
+        }
       }
     }
     const prov = s.custom ? "Your point" : providerName(s.provider);
@@ -863,29 +871,85 @@
       <dl>
         <dt>Score</dt><dd>${fmtPct(p.score)}</dd>
         <dt>${esc(ds.meta.costLabel)}</dt><dd>${fmtCost(p.cost)}</dd>
-        ${p.score > 0 ? `<dt>Cost per point</dt><dd>${fmtCost(p.cost / (p.score * 100))}</dd>` : ""}
+        ${pinned && p.score > 0 ? `<dt>Cost per point</dt><dd>${fmtCost(p.cost / (p.score * 100))}</dd>` : ""}
       </dl>
       ${flag ? `<div class="tt-flag">${flag}</div>` : ""}
-      ${p.note ? `<div class="tt-note">${esc(p.note.length > 220 ? p.note.slice(0, 217) + "…" : p.note)}</div>` : ""}
-      ${s.custom ? "" : `<div class="tt-hint">Click to pin</div>
+      ${pinned && p.note ? `<div class="tt-note">${esc(p.note.length > 220 ? p.note.slice(0, 217) + "…" : p.note)}</div>` : ""}
+      ${s.custom ? "" : pinned ? `
       <div class="tt-actions">
         <button type="button" data-act="only">Only this</button>
         <button type="button" data-act="remove">Remove</button>
         ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">ARC results ↗</a>` : ""}
-      </div>`}`;
+      </div>` : `<div class="tt-hint">Click for details</div>`}`;
     tooltip.classList.toggle("pinned", pinned);
     tooltip.hidden = false;
+    placeTooltip(hit);
+  }
+
+  // Put the tooltip where it hides the least of the focused model: its points, its line and
+  // its effort labels. Up-left is tried first: lines rise to the right, and nothing sits
+  // above-left of the frontier (that would mean a higher score for less).
+  function placeTooltip(hit) {
     const card = chartEl.parentElement.getBoundingClientRect();
     const box = chartEl.getBoundingClientRect();
-    const ax = box.left - card.left + m.left + hit.sx;
-    const ay = box.top - card.top + m.top + hit.sy;
+    const ox = box.left - card.left + ctx.m.left, oy = box.top - card.top + ctx.m.top;
+    const ax = ox + hit.sx, ay = oy + hit.sy;
     const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-    let left = ax + 18;
-    if (left + tw > card.width - 8) left = ax - tw - 18;
-    left = Math.max(8, left);
-    const top = Math.max(8, Math.min(card.height - th - 8, ay - th / 2));
-    tooltip.style.left = left + "px";
-    tooltip.style.top = top + "px";
+    const pad = 8;
+
+    const key = hit.p.s;
+    const own = screenPts.filter((d) => d.p.s === key).sort((a, b) => a.p.cost - b.p.cost);
+    const obstacles = []; // [x, y, r, weight] circles in card coordinates
+    for (const d of screenPts) {
+      if (d.p.s !== key) obstacles.push([ox + d.sx, oy + d.sy, 5, 1]);
+    }
+    for (const d of own) obstacles.push([ox + d.sx, oy + d.sy, 10, 12]);
+    for (let i = 1; i < own.length; i++) {
+      const a = own[i - 1], b = own[i];
+      const n = Math.ceil(Math.hypot(b.sx - a.sx, b.sy - a.sy) / 10);
+      for (let j = 1; j < n; j++) obstacles.push([ox + a.sx + ((b.sx - a.sx) * j) / n, oy + a.sy + ((b.sy - a.sy) * j) / n, 3, 3]);
+    }
+    const rects = []; // [x0, y0, x1, y1, weight]: effort labels and the model's end label
+    layers.effort.selectAll("text").each(function () { rects.push(clientRect(this, card, 10)); });
+    layers.labels.selectAll("g.lbl.hl").each(function () { rects.push(clientRect(this, card, 4)); });
+
+    // Each direction is tried close in first, then further out to clear nearby labels.
+    const cands = [];
+    for (const g of [16, 34, 60]) {
+      cands.push(
+        [ax - tw - g, ay - th - g], // up-left
+        [ax + g, ay + g],           // down-right
+        [ax + g, ay - th / 2],      // right
+        [ax - tw - g, ay - th / 2], // left
+        [ax + g, ay - th - g],      // up-right
+        [ax - tw - g, ay + g],      // down-left
+        [ax - tw / 2, ay - th - g], // above
+        [ax - tw / 2, ay + g],      // below
+      );
+    }
+    let best = null;
+    cands.forEach(([l0, t0], i) => {
+      const l = Math.max(pad, Math.min(card.width - tw - pad, l0));
+      const t = Math.max(pad, Math.min(card.height - th - pad, t0));
+      const r = l + tw, b = t + th;
+      let cost = (i % 8) * 0.5 + Math.floor(i / 8) * 2 + (Math.abs(l - l0) + Math.abs(t - t0)) * 0.05; // direction, distance, clamping
+      // Never cover the hovered point or the cursor next to it.
+      if (ax > l - 14 && ax < r + 14 && ay > t - 14 && ay < b + 14) cost += 1000;
+      for (const [x, y, rad, w] of obstacles) {
+        if (x > l - rad && x < r + rad && y > t - rad && y < b + rad) cost += w;
+      }
+      for (const [x0, y0, x1, y1, w] of rects) {
+        const ix = Math.min(r, x1) - Math.max(l, x0), iy = Math.min(b, y1) - Math.max(t, y0);
+        if (ix > 0 && iy > 0) cost += w;
+      }
+      if (!best || cost < best.cost) best = { cost, l, t };
+    });
+    tooltip.style.left = best.l + "px";
+    tooltip.style.top = best.t + "px";
+  }
+  function clientRect(el, card, w) {
+    const r = el.getBoundingClientRect();
+    return [r.left - card.left - 4, r.top - card.top - 4, r.right - card.left + 4, r.bottom - card.top + 4, w];
   }
   function hideTooltip() {
     tooltip.hidden = true;
