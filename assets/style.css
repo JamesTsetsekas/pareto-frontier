@@ -251,7 +251,10 @@ select:focus-visible, input:focus-visible, button:focus-visible, summary:focus-v
 .custom-list li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
 .custom-list button { background: none; border: 0; color: var(--text-3); cursor: pointer; }
 
-.table-card { grid-column: 1 / -1; padding: 10px 14px; }
+/* The table sits under the chart in the left column, and the sticky model panel spans both
+   rows, so it follows you down the page beside the table instead of floating over it. */
+.panel { grid-column: 2; grid-row: 1 / span 2; }
+.table-card { grid-column: 1; padding: 10px 14px; min-width: 0; }
 .table-card summary { cursor: pointer; font-weight: 600; }
 .table-wrap { overflow-x: auto; margin-top: 10px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -266,7 +269,8 @@ td .cell-model { display: inline-flex; align-items: center; gap: 8px; }
   .layout { grid-template-columns: 1fr; padding: 0 16px 16px; }
   .topbar { padding: 16px 16px 8px; }
   .toolbar { padding: 4px 16px 12px; }
-  .panel { position: static; max-height: 520px; }
+  .panel { position: static; max-height: 520px; grid-column: auto; grid-row: auto; }
+  .table-card { grid-column: auto; }
   .chart { height: 540px; }
 }
 @media (max-width: 560px) {
