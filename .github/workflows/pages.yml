@@ -29,17 +29,29 @@ jobs:
       - name: Fetch latest ARC Prize leaderboard
         run: node scripts/fetch-arc.mjs
 
-      - name: Commit snapshot if it changed
+      - name: Fetch latest LiveBench release
+        run: node scripts/fetch-livebench.mjs
+
+      - name: Commit snapshots that changed
         run: |
-          # fetchedAt changes every run; only commit when the actual data changed.
-          if git diff --quiet -- data/arc.json; then exit 0; fi
-          old=$(git show HEAD:data/arc.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);delete j.fetchedAt;console.log(JSON.stringify(j))})')
-          new=$(node -e 'const j=require("./data/arc.json");delete j.fetchedAt;console.log(JSON.stringify(j))')
-          if [ "$old" = "$new" ]; then exit 0; fi
+          # fetchedAt changes every run; only commit files whose actual data changed.
+          strip='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);delete j.fetchedAt;console.log(JSON.stringify(j))})'
+          changed=""
+          for f in data/arc.json data/livebench.json; do
+            [ -f "$f" ] || continue
+            if git cat-file -e "HEAD:$f" 2>/dev/null; then
+              git diff --quiet -- "$f" && continue
+              old=$(git show "HEAD:$f" | node -e "$strip")
+              new=$(node -e "$strip" < "$f")
+              [ "$old" = "$new" ] && continue
+            fi
+            changed="$changed $f"
+          done
+          [ -z "$changed" ] && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/arc.json
-          git commit -m "Refresh ARC Prize data snapshot"
+          git add $changed
+          git commit -m "Refresh leaderboard data snapshot"
           git push || echo "Push skipped (branch moved); the deploy still uses fresh data"
 
       - uses: actions/configure-pages@v5

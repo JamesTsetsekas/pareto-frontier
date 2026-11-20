@@ -2,9 +2,23 @@
 (() => {
   "use strict";
 
-  const DATA_URL = "data/arc.json";
+  // Each source is a snapshot refreshed by the Pages workflow. Cost means something
+  // different in each, so a chart only ever shows one source's benchmark.
+  const SOURCES = [
+    {
+      id: "arc", url: "data/arc.json", name: "ARC Prize", origin: "https://arcprize.org",
+      order: ["v2_Semi_Private", "v1_Semi_Private", "v3_Semi_Private"],
+      note: (d) => (d.costLabel === "Cost per run"
+        ? "Cost per run is ARC Prize's measured spend for a full run of the benchmark."
+        : "Cost per task is ARC Prize's measured API spend per puzzle.") + " Each line is one model across the reasoning-effort settings ARC Prize tested.",
+    },
+    {
+      id: "livebench", url: "data/livebench.json", name: "LiveBench", origin: "https://livebench.ai",
+      order: ["lb_overall"],
+      note: (d) => d.note + " One point per model, at the effort setting LiveBench ran it at.",
+    },
+  ];
   const LOGO_URL = "assets/logos.svg";
-  const ARC_ORIGIN = "https://arcprize.org";
   const SVG_NS = "http://www.w3.org/2000/svg";
 
   // Fixed provider -> categorical slot. Color follows the provider, never rank.
@@ -19,6 +33,8 @@
     Meta: "meta-color", "Meta AI": "meta-color", Mistral: "mistral-color",
     Minimax: "minimax-color", "Z.ai": "zai", NVIDIA: "nvidia-color",
     Reflection: "reflection", Inception: "inception", "Dots Studio": "dotsstudio",
+    Xiaomi: "xiaomimimo", StepFun: "stepfun-color", Microsoft: "microsoft-color", Cohere: "cohere-color",
+    Amazon: "aws-color", Perplexity: "perplexity-color", Tencent: "tencent-color", Arcee: "arcee-color", Ai2: "ai2",
     Human: "human",
   };
   const TINTS = [0, 15, -14, 27, -24, 8, -7, 21];
@@ -139,12 +155,15 @@
   async function load() {
     readTheme();
     try {
-      const [data, logos] = await Promise.all([
-        fetch(DATA_URL, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
+      const [results, logos] = await Promise.all([
+        Promise.allSettled(SOURCES.map((src) => fetch(src.url, { cache: "no-cache" })
+          .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }))),
         fetch(LOGO_URL).then((r) => (r.ok ? r.text() : "")).catch(() => ""),
         Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]),
       ]);
-      state.data = data;
+      const loaded = SOURCES.map((src, i) => [src, results[i].value]).filter(([, d]) => d);
+      if (!loaded.length) throw new Error(results[0].reason?.message || "no data");
+      state.data = mergeSources(loaded);
       const sprite = $("#logo-sprite");
       sprite.innerHTML = logos;
       sprite.hidden = false;
@@ -172,6 +191,45 @@
     new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   }
 
+  // Combine the per-source snapshots into one dataset list. A model that appears in
+  // several sources keeps one key (the first source's), so a selection carries over
+  // when switching between benchmarks from different sources.
+  // Parentheses stay significant: "(NVFP4)" or "(Preview)" marks a different model.
+  const normName = (n) => n.toLowerCase().replace(/[^a-z0-9.()]+/g, "");
+  function mergeSources(loaded) {
+    const out = { sources: new Map(), datasets: [], providers: {}, series: [], points: [] };
+    const byName = new Map(); // normalized model name -> series
+    for (const [src, data] of loaded) {
+      out.sources.set(src.id, {
+        ...src, fetchedAt: data.fetchedAt, sourceLastModified: data.sourceLastModified,
+        sourceUrl: data.sourceUrl, release: data.release,
+      });
+      for (const d of data.datasets) out.datasets.push({ ...d, source: src.id, short: d.short || d.name });
+      Object.assign(out.providers, data.providers);
+      const keyMap = new Map();
+      const added = [];
+      for (const s of data.series) {
+        // Only match against earlier sources: within one source, similar names are distinct models.
+        const n = isAdapter(s) ? null : normName(s.name);
+        const match = n && byName.get(n);
+        if (match && ![...keyMap.values()].includes(match.key)) {
+          keyMap.set(s.key, match.key);
+          continue;
+        }
+        const copy = { ...s };
+        out.series.push(copy);
+        if (n) added.push([n, copy]);
+      }
+      for (const [n, s] of added) if (!byName.has(n)) byName.set(n, s);
+      for (const p of data.points) {
+        const url = p.url ? (/^https?:/.test(p.url) ? p.url : src.origin + p.url) : null;
+        out.points.push({ ...p, s: keyMap.get(p.s) || p.s, url, source: src.id });
+      }
+    }
+    return out;
+  }
+  const sourceOf = (datasetId) => state.data.sources.get(state.data.datasets.find((d) => d.id === datasetId)?.source);
+
   function prepare() {
     const { series, points } = state.data;
     seriesByKey = new Map(series.map((s) => [s.key, { ...s }]));
@@ -181,14 +239,23 @@
       list.forEach((s, i) => (s.tint = i));
     }
     for (const p of points) p.series = seriesByKey.get(p.s);
-    $("#source").innerHTML = `Data: <a href="${esc(state.data.sourceUrl)}" target="_blank" rel="noopener">ARC Prize leaderboard</a>, refreshed automatically every 3 hours`;
+    const links = [...state.data.sources.values()].map((s) => `<a href="${esc(s.sourceUrl)}" target="_blank" rel="noopener">${esc(s.name)}</a>`);
+    $("#source").innerHTML = `Data: ${links.join(" and ")}, refreshed automatically every 3 hours`;
+  }
+
+  // Header badge and cost note follow the source of the selected benchmark.
+  function renderSourceInfo() {
+    const src = sourceOf(state.datasetId);
+    if (!src) return;
     const live = $("#live");
-    const ageH = (Date.now() - new Date(state.data.fetchedAt).getTime()) / 3.6e6;
+    const ageH = (Date.now() - new Date(src.fetchedAt).getTime()) / 3.6e6;
     live.hidden = false;
-    $("#live-text").textContent = `Live · updated ${relTime(state.data.fetchedAt)}`;
-    live.title = `Fetched from arcprize.org ${new Date(state.data.fetchedAt).toLocaleString()}` +
-      (state.data.sourceLastModified ? `\nLeaderboard last changed ${new Date(state.data.sourceLastModified).toLocaleString()}` : "");
-    if (ageH > 12) live.querySelector(".pulse").style.animation = "none";
+    $("#live-text").textContent = `${src.name} · updated ${relTime(src.fetchedAt)}`;
+    live.title = `Fetched from ${src.origin.replace(/^https:\/\//, "")} ${new Date(src.fetchedAt).toLocaleString()}` +
+      (src.release ? `\nLatest LiveBench release: ${fmtDate(src.release)}` : "") +
+      (src.sourceLastModified ? `\nLeaderboard last changed ${new Date(src.sourceLastModified).toLocaleString()}` : "");
+    live.querySelector(".pulse").style.animation = ageH > 12 ? "none" : "";
+    $("#cost-note").innerHTML = `${esc(src.note(ds.meta))} <a href="${esc(src.sourceUrl)}" target="_blank" rel="noopener">${esc(src.name)} ↗</a>`;
   }
 
   function deriveDataset() {
@@ -243,13 +310,21 @@
 
   function selectDataset(id, { keepSelection = false } = {}) {
     if (!state.data.datasets.some((d) => d.id === id)) id = state.data.datasets.find((d) => d.id === "v2_Semi_Private")?.id || state.data.datasets[0].id;
+    const prevSource = ds && sourceOf(state.datasetId)?.id;
     state.datasetId = id;
     $("#dataset").value = id;
     deriveDataset();
     const carried = [...state.selected].filter((k) => ds.byKey.has(k));
-    if (keepSelection && carried.length) state.selected = new Set([...state.selected]);
-    else preset("default");
+    if (!keepSelection || !carried.length) {
+      preset("default");
+    } else if (prevSource && prevSource !== sourceOf(id)?.id) {
+      // New source, different model list: keep the models it shares with the old one and
+      // add this source's recommended set, so its own newest models show up too.
+      preset("default");
+      state.selected = new Set([...carried, ...state.selected]);
+    }
     resetZoom(false);
+    renderSourceInfo();
     update({ animate: true });
   }
 
@@ -282,12 +357,13 @@
 
   // ---------- UI ----------
   function buildDatasetSelect() {
-    const order = ["v2_Semi_Private", "v1_Semi_Private", "v3_Semi_Private"];
-    const sorted = [...state.data.datasets].sort((a, b) => {
-      const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.name.localeCompare(b.name);
-    });
-    $("#dataset").innerHTML = sorted.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join("");
+    $("#dataset").innerHTML = [...state.data.sources.values()].map((src) => {
+      const list = state.data.datasets.filter((d) => d.source === src.id);
+      const rank = (d) => { const i = src.order.indexOf(d.id); return i < 0 ? 99 : i; };
+      // ARC Prize: listed order then name. LiveBench: overall first, then suites in published order.
+      list.sort((a, b) => rank(a) - rank(b) || (src.id === "arc" ? a.name.localeCompare(b.name) : 0));
+      return `<optgroup label="${esc(src.name)}">${list.map((d) => `<option value="${esc(d.id)}">${esc(d.short)}</option>`).join("")}</optgroup>`;
+    }).join("");
   }
 
   function bindUI() {
@@ -474,10 +550,10 @@
   function rowHTML(s) {
     const on = state.selected.has(s.key);
     return `<li class="model-row${on ? "" : " off"}" data-key="${esc(s.key)}">
-      <label title="${esc(s.name)} · ${esc(providerName(s.provider))} · released ${esc(fmtDate(s.released))}">
+      <label title="${esc(s.name)} · ${esc(providerName(s.provider))} · ${s.releasedApprox ? "first on LiveBench" : "released"} ${esc(fmtDate(s.released))}">
         <input type="checkbox" data-key="${esc(s.key)}" ${on ? "checked" : ""} />
         <span class="sw" style="background:${seriesColor(s)}"></span>
-        <span class="nm"><b>${esc(s.name)}</b><small>${esc(fmtShortDate(s.released))} · from ${fmtCost(s.minCost)}</small></span>
+        <span class="nm"><b>${esc(s.name)}</b><small>${s.releasedApprox ? "~" : ""}${esc(fmtShortDate(s.released))} · from ${fmtCost(s.minCost)}</small></span>
         <span class="meta">${fmtPct(s.best.score)}</span>
       </label>
       <button type="button" class="only" data-only="${esc(s.key)}" title="Show only this model">only</button>
@@ -864,10 +940,11 @@
       }
     }
     const prov = s.custom ? "Your point" : providerName(s.provider);
-    const url = p.url ? ARC_ORIGIN + p.url : null;
+    const src = state.data.sources.get(p.source);
+    const url = p.url || src?.sourceUrl;
     tooltip.innerHTML = `
       <div class="tt-head"><span class="tt-sw" style="background:${seriesColor(s)}"></span>${logoHTML(s.custom ? "__custom" : s.provider, 20)}<div class="tt-name">${esc(s.name)}</div></div>
-      <div class="tt-sub">${esc(prov)}${p.effort ? " · " + esc(p.effort) + " effort" : ""}${s.released ? " · " + esc(fmtDate(s.released)) : ""}</div>
+      <div class="tt-sub">${esc(prov)}${p.effort ? " · " + esc(p.effort) + " effort" : ""}${s.released ? " · " + (s.releasedApprox ? "on LiveBench since " : "") + esc(fmtDate(s.released)) : ""}</div>
       <dl>
         <dt>Score</dt><dd>${fmtPct(p.score)}</dd>
         <dt>${esc(ds.meta.costLabel)}</dt><dd>${fmtCost(p.cost)}</dd>
@@ -879,7 +956,7 @@
       <div class="tt-actions">
         <button type="button" data-act="only">Only this</button>
         <button type="button" data-act="remove">Remove</button>
-        ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">ARC results ↗</a>` : ""}
+        ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(src.name)} ${p.url ? "results" : "leaderboard"} ↗</a>` : ""}
       </div>` : `<div class="tt-hint">Click for details</div>`}`;
     tooltip.classList.toggle("pinned", pinned);
     tooltip.hidden = false;
@@ -1014,7 +1091,8 @@
     caption.setAttribute("y", H - 8);
     caption.setAttribute("text-anchor", "end");
     caption.setAttribute("style", `fill:${theme["text-3"]};font-size:11px;font-family:system-ui,sans-serif`);
-    caption.textContent = `${ds.meta.name} · data: ARC Prize, ${new Date(state.data.fetchedAt).toISOString().slice(0, 10)}`;
+    const source = sourceOf(state.datasetId);
+    caption.textContent = `${ds.meta.name} · data: ${source.name}, ${new Date(source.fetchedAt).toISOString().slice(0, 10)}`;
     clone.appendChild(caption);
 
     const xml = new XMLSerializer().serializeToString(clone);
@@ -1042,7 +1120,7 @@
     const table = $("#table");
     table.innerHTML = `<thead><tr>${cols.map(([key, label, cls]) => `<th class="${cls || ""}" data-sort="${key}" aria-sort="${key === k ? (dir > 0 ? "ascending" : "descending") : "none"}">${esc(label)}${key === k ? (dir > 0 ? " ↑" : " ↓") : ""}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((r) => {
-        const name = r.url ? `<a href="${ARC_ORIGIN}${esc(r.url)}" target="_blank" rel="noopener">${esc(r.model)}</a>` : esc(r.model);
+        const name = r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.model)}</a>` : esc(r.model);
         return `<tr><td><span class="cell-model">${logoHTML(r.s.custom ? "__custom" : r.s.provider, 16)}${name}</span></td><td>${esc(r.provider)}</td><td>${esc(r.effort || "—")}</td><td class="num">${fmtPct(r.score)}</td><td class="num">${fmtCost(r.cost)}</td><td>${r.frontier ? "◆ yes" : ""}</td></tr>`;
       }).join("")}</tbody>`;
     table.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {

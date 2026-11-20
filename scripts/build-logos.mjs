@@ -16,6 +16,8 @@ const ICONS = [
   "openai", "anthropic", "google-color", "xai", "deepseek-color", "kimi-color",
   "qwen-color", "meta-color", "mistral-color", "minimax-color", "zai",
   "nvidia-color", "reflection", "inception", "dotsstudio",
+  "xiaomimimo", "stepfun-color", "microsoft-color", "cohere-color", "aws-color",
+  "perplexity-color", "tencent-color", "arcee-color", "ai2",
 ];
 
 // Not in LobeHub: a simple person glyph for the human baseline.
