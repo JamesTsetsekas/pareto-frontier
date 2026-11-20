@@ -7,13 +7,16 @@ Interactive score-vs-cost chart for AI models, with the Pareto frontier drawn on
 ## Features
 
 - Benchmarks: ARC-AGI-1, ARC-AGI-2, ARC-AGI-3, plus the public and private eval variants
-- Each model is one line, with a point per reasoning-effort level (Low → Max)
-- Pareto frontier computed from the models on the chart, or from every model on the benchmark
-- Add or remove models: search, provider-level all/none toggles, and presets (Recommended, Frontier only, Latest 12, All)
-- Hover tooltips with score, cost, release date, cost per point, and which frontier point dominates it
+- Each model is one line, with a point per reasoning-effort level (Low → Max). Hover a model to label its effort levels
+- Real provider logos in the end labels, legend, tooltips and table. Each provider has one brand hue, and its models get different shades of it
+- Pareto frontier computed from the models on the chart, or from every model on the benchmark. Frontier points are enlarged and haloed
+- Hover shows a crosshair with axis readouts and a tooltip with score, cost, cost per point, and which frontier model beats it
+- Click a point to pin its tooltip: show only that model, remove it, or open its ARC Prize results
+- Models are grouped by provider (collapsible, with all/none toggles), searchable, and sortable. There are presets (Recommended, Frontier, Newest 12, All) and a release-date filter
 - Zoom and pan (scroll or pinch, drag, double-click to reset), log or linear cost axis
+- Export the chart as a PNG or the visible points as CSV
 - Add your own points to compare against the field
-- Shareable URLs: benchmark, selection, axis, and custom points are kept in the link
+- Shareable URLs: benchmark, selection, filters, and custom points are kept in the link
 - Light and dark themes, a sortable data table, and a layout that works on phones
 
 ## Data
@@ -38,6 +41,8 @@ npx http-server .            # or any static server
 ```
 
 There's no build step and no dependencies. D3 v7 loads from cdnjs.
+
+Provider logos come from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT) and are bundled into `assets/logos.svg`. To add a provider, add its icon name to `scripts/build-logos.mjs` and `PROVIDER_LOGO` in `assets/app.js`, then run `node scripts/build-logos.mjs`.
 
 ## Adding another data source
 
