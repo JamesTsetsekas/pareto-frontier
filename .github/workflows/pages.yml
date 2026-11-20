@@ -1,0 +1,65 @@
+name: Refresh data and deploy Pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 */3 * * *" # every 3 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write # commit the refreshed snapshot (keeps the fallback fresh and the repo active)
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch latest ARC Prize leaderboard
+        run: node scripts/fetch-arc.mjs
+
+      - name: Commit snapshot if it changed
+        run: |
+          # fetchedAt changes every run; only commit when the actual data changed.
+          if git diff --quiet -- data/arc.json; then exit 0; fi
+          old=$(git show HEAD:data/arc.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);delete j.fetchedAt;console.log(JSON.stringify(j))})')
+          new=$(node -e 'const j=require("./data/arc.json");delete j.fetchedAt;console.log(JSON.stringify(j))')
+          if [ "$old" = "$new" ]; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/arc.json
+          git commit -m "Refresh ARC Prize data snapshot"
+          git push || echo "Push skipped (branch moved); the deploy still uses fresh data"
+
+      - uses: actions/configure-pages@v5
+
+      - name: Assemble site
+        run: |
+          mkdir _site
+          cp -r index.html assets data _site/
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
