@@ -25,6 +25,7 @@ const CREATOR_ALIAS = {
   "Z AI": "Z.ai", "Zhipu AI": "Z.ai", "Z.AI": "Z.ai", Kimi: "Moonshot AI", "Moonshot": "Moonshot AI",
   "Alibaba Cloud": "Alibaba", Qwen: "Alibaba", "Microsoft Azure": "Microsoft", "Amazon Web Services": "Amazon", AWS: "Amazon",
   "Reflection AI": "Reflection", "Allen Institute for AI": "Ai2", AllenAI: "Ai2", "Xiaomi MiMo": "Xiaomi", "Nvidia": "NVIDIA",
+  SpaceXAI: "xAI", "SpaceX AI": "xAI", "xAI Corp": "xAI",
   "Cohere For AI": "Cohere", "Perplexity AI": "Perplexity", "Arcee AI": "Arcee", "Inception Labs": "Inception",
 };
 const EFFORT_WORDS = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "XHigh", "x-high": "XHigh", "extra high": "XHigh", max: "Max", maximum: "Max" };
