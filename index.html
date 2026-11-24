@@ -4,8 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pareto Frontier Explorer</title>
-  <meta name="description" content="Interactive cost vs. score Pareto frontier for AI models, built on live ARC Prize and LiveBench leaderboard data." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 28 L10 20 L16 12 L24 7 L29 5' stroke='%23eb6834' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <meta name="description" content="Compare AI models by score, cost and tokens used, with the Pareto frontier drawn on top. Live data from ARC Prize, LiveBench and Artificial Analysis." />
+  <meta name="theme-color" content="#0a0a0a" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 28 L10 20 L16 12 L24 7 L29 5' stroke='%23e3a372' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet" />
@@ -18,120 +19,161 @@
 <body>
   <div id="logo-sprite" hidden></div>
 
-  <header class="topbar">
-    <div class="title">
-      <h1>Pareto Frontier Explorer</h1>
-      <p class="sub">What does each point of score cost? Pick a benchmark from ARC Prize or LiveBench. Each dot is a model's result, and a line joins one model's results at different reasoning-effort settings. The dashed staircase is the Pareto frontier: nothing beats it on both score and price.</p>
-    </div>
-    <div class="topbar-right">
-      <span id="live" class="live" hidden><span class="pulse" aria-hidden="true"></span><span id="live-text">Live data</span></span>
+  <header class="nav">
+    <a class="brand" href="./" aria-label="Pareto Frontier Explorer, home">pareto<b>frontier</b></a>
+    <nav class="tabs src-tabs" id="src-tabs" aria-label="Data source"></nav>
+    <span class="nav-sep" aria-hidden="true"></span>
+    <nav class="tabs view-tabs" id="view-tabs" aria-label="Chart"></nav>
+    <div class="nav-right">
       <button type="button" class="icon-btn" id="theme" aria-label="Toggle light or dark theme" title="Toggle theme"></button>
+      <button type="button" class="icon-btn" id="export-png" aria-label="Download PNG" title="Download the chart as a PNG">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="menu-wrap">
+        <button type="button" class="icon-btn" id="menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="More options" title="More options">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></svg>
+        </button>
+        <div class="menu" id="menu" role="menu" hidden>
+          <button type="button" role="menuitemcheckbox" data-opt="labels" aria-checked="true">Labels</button>
+          <button type="button" role="menuitemcheckbox" data-opt="group" aria-checked="true">Group bars by model</button>
+          <button type="button" role="menuitemcheckbox" data-opt="highestLast" aria-checked="true">Highest last</button>
+          <hr />
+          <button type="button" role="menuitem" id="export-csv">Download CSV</button>
+          <button type="button" role="menuitem" id="share">Copy link</button>
+          <hr />
+          <a role="menuitem" href="https://github.com/JamesTsetsekas/pareto-frontier" target="_blank" rel="noopener">Source on GitHub ↗</a>
+        </div>
+      </div>
+      <button type="button" class="models-btn" id="models-btn" aria-controls="panel" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
+        Models <span id="models-count" class="muted"></span>
+      </button>
     </div>
   </header>
 
-  <div class="toolbar" role="toolbar" aria-label="Chart controls">
-    <label class="ctl">
-      <span>Benchmark</span>
-      <select id="dataset"></select>
-    </label>
-    <div class="ctl">
-      <span>Cost axis</span>
-      <div class="seg" role="group" aria-label="Cost axis scale">
-        <button type="button" data-scale="log" aria-pressed="true">Log</button>
-        <button type="button" data-scale="linear" aria-pressed="false">Linear</button>
-      </div>
-    </div>
-    <div class="ctl">
-      <span>Frontier from</span>
-      <div class="seg" role="group" aria-label="Frontier scope">
-        <button type="button" data-frontier="visible" aria-pressed="true" title="Frontier computed from the models on the chart">Shown models</button>
-        <button type="button" data-frontier="all" aria-pressed="false" title="Frontier computed from every model on this benchmark">All models</button>
-        <button type="button" data-frontier="off" aria-pressed="false">Hide</button>
-      </div>
-    </div>
-    <label class="ctl">
-      <span>Released</span>
-      <select id="released">
-        <option value="0">Any time</option>
-        <option value="365">Past year</option>
-        <option value="182">Past 6 months</option>
-        <option value="91">Past 3 months</option>
-      </select>
-    </label>
-  </div>
-
-  <main class="layout">
-    <section class="chart-card" aria-label="Pareto chart">
-      <div class="chart-head">
-        <div id="status" class="status" aria-live="polite">Loading leaderboard data…</div>
-        <div class="chart-actions">
-          <button type="button" class="ghost-btn" id="reset-zoom" hidden>Reset zoom</button>
-          <button type="button" class="ghost-btn" id="export-png" title="Download the chart as a PNG">PNG</button>
-          <button type="button" class="ghost-btn" id="export-csv" title="Download the points on the chart as CSV">CSV</button>
-          <button type="button" class="ghost-btn" id="share">Copy link</button>
+  <div class="app">
+    <main class="main">
+      <section class="chart-sec" aria-label="Chart">
+        <div class="chart-head">
+          <div class="chart-title">
+            <h1 id="view-title">Score vs cost</h1>
+            <select id="dataset" class="ds-select" aria-label="Benchmark"></select>
+          </div>
+          <div class="chart-ctl">
+            <label class="check" id="pareto-ctl"><input type="checkbox" id="pareto" checked /> Pareto line</label>
+            <span class="txt-seg" id="scope-seg" role="group" aria-label="Frontier computed from">
+              <button type="button" data-frontier="visible" title="Frontier computed from the models on the chart">shown</button>
+              <button type="button" data-frontier="all" title="Frontier computed from every model on this benchmark">all</button>
+            </span>
+            <span class="txt-seg" id="mode-seg" role="group" aria-label="Chart type">
+              <button type="button" data-mode="bars">Bars</button>
+              <button type="button" data-mode="scatter">Scatter</button>
+            </span>
+            <span class="txt-seg" id="scale-seg" role="group" aria-label="Axis scale">
+              <button type="button" data-scale="linear">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+            </span>
+            <button type="button" class="ghost-btn" id="reset-zoom" hidden>Reset zoom</button>
+          </div>
         </div>
-      </div>
-      <div id="chart" class="chart"></div>
-      <div id="tooltip" class="tooltip" role="dialog" aria-live="polite" hidden></div>
-      <p id="cost-note" class="cost-note"></p>
-      <p class="hint">Hover for details, click a point to pin it. Scroll or pinch to zoom, drag to pan, double-click to reset.</p>
-    </section>
+        <p id="status" class="status" aria-live="polite">Loading leaderboard data…</p>
+        <div class="chart-wrap">
+          <div id="chart" class="chart"></div>
+          <div id="tooltip" class="tooltip" role="dialog" aria-live="polite" hidden></div>
+        </div>
+        <div id="legend" class="legend" hidden></div>
+        <p id="cost-note" class="cost-note"></p>
+        <p id="hint" class="hint"></p>
+      </section>
 
-    <aside class="panel" aria-label="Models">
+      <section class="table-sec" aria-label="Data table">
+        <details>
+          <summary>Data table <span class="muted">· points on the chart</span></summary>
+          <div class="table-wrap"><table id="table"></table></div>
+        </details>
+      </section>
+
+      <footer class="foot">
+        <span id="source">Data from …</span>
+        <span class="foot-right">
+          <span>Logos: <a href="https://github.com/lobehub/lobe-icons" target="_blank" rel="noopener">LobeHub Icons</a></span>
+          <a href="https://github.com/JamesTsetsekas/pareto-frontier" target="_blank" rel="noopener">Source on GitHub</a>
+        </span>
+      </footer>
+    </main>
+
+    <aside class="panel" id="panel" aria-label="Models">
       <div class="panel-head">
         <div class="panel-title">
-          <h2>Models</h2>
-          <span id="count" class="muted"></span>
+          <h2>Models <span id="count" class="muted"></span></h2>
+          <div>
+            <button type="button" class="icon-btn sm" id="reset-sel" aria-label="Reset to recommended models" title="Reset to recommended">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v3.7h3.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button type="button" class="icon-btn sm close-panel" id="close-panel" aria-label="Close models">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
         </div>
-        <input id="search" type="search" placeholder="Search models or providers" aria-label="Search models" />
-        <div class="chips">
-          <button type="button" data-preset="default">Recommended</button>
-          <button type="button" data-preset="frontier">Frontier</button>
-          <button type="button" data-preset="recent">Newest 12</button>
-          <button type="button" data-preset="all">All</button>
-          <button type="button" data-preset="none">Clear</button>
-        </div>
-        <label class="ctl inline">
-          <span>Sort</span>
-          <select id="sort">
-            <option value="recent">Newest</option>
-            <option value="score">Best score</option>
-            <option value="cost">Cheapest</option>
-            <option value="name">Name</option>
-          </select>
+        <label class="search">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <input id="search" type="search" placeholder="Find models" aria-label="Find models" autocomplete="off" />
+          <kbd aria-hidden="true">/</kbd>
         </label>
       </div>
-      <ul id="model-list" class="model-list"></ul>
-
-      <details class="custom">
-        <summary>Add your own point</summary>
-        <form id="custom-form" autocomplete="off">
-          <label>Name <input name="name" required maxlength="40" placeholder="My model" /></label>
-          <div class="row">
-            <label>Cost ($) <input name="cost" type="number" step="any" min="0.0001" required placeholder="0.50" /></label>
-            <label>Score (%) <input name="score" type="number" step="any" min="0" max="100" required placeholder="42" /></label>
+      <div class="panel-body">
+        <div class="filter" id="effort-filter">
+          <h3>Reasoning</h3>
+          <div class="toggles" id="effort-chips" role="group" aria-label="Reasoning effort"></div>
+        </div>
+        <div class="filter">
+          <h3 title="By list price per million output tokens. Models without a published price always show.">Price</h3>
+          <div class="toggles" id="tier-chips" role="group" aria-label="Price tier"></div>
+        </div>
+        <div class="filter">
+          <h3>Released</h3>
+          <div class="toggles radio" id="released-chips" role="group" aria-label="Released">
+            <button type="button" data-released="0">any</button>
+            <button type="button" data-released="365">1y</button>
+            <button type="button" data-released="182">6m</button>
+            <button type="button" data-released="91">3m</button>
           </div>
-          <button type="submit">Add point</button>
-        </form>
-        <ul id="custom-list" class="custom-list"></ul>
-      </details>
+        </div>
+        <div class="filter presets">
+          <h3>Show</h3>
+          <div class="toggles links">
+            <button type="button" data-preset="default">Recommended</button>
+            <button type="button" data-preset="frontier">Frontier</button>
+            <button type="button" data-preset="recent">Newest</button>
+            <button type="button" data-preset="all">All</button>
+            <button type="button" data-preset="none">None</button>
+          </div>
+          <label class="sort">Sort
+            <select id="sort">
+              <option value="recent">Newest</option>
+              <option value="score">Best score</option>
+              <option value="cost">Cheapest</option>
+              <option value="name">Name</option>
+            </select>
+          </label>
+        </div>
+        <ul id="model-list" class="model-list"></ul>
+        <details class="custom">
+          <summary>Add your own point</summary>
+          <form id="custom-form" autocomplete="off">
+            <label>Name <input name="name" required maxlength="40" placeholder="My model" /></label>
+            <div class="row">
+              <label>Cost ($) <input name="cost" type="number" step="any" min="0.0001" required placeholder="0.50" /></label>
+              <label>Score <input name="score" type="number" step="any" min="0" max="100" required placeholder="42" /></label>
+            </div>
+            <button type="submit">Add point</button>
+          </form>
+          <ul id="custom-list" class="custom-list"></ul>
+        </details>
+      </div>
     </aside>
-
-    <section class="table-card" aria-label="Data table">
-      <details>
-        <summary>Data table <span class="muted">(points on the chart)</span></summary>
-        <div class="table-wrap"><table id="table"></table></div>
-      </details>
-    </section>
-  </main>
-
-  <footer class="foot">
-    <span id="source"></span>
-    <span>·</span>
-    <span>Logos: <a href="https://github.com/lobehub/lobe-icons" target="_blank" rel="noopener">LobeHub Icons</a></span>
-    <span>·</span>
-    <a href="https://github.com/JamesTsetsekas/pareto-frontier" target="_blank" rel="noopener">Source on GitHub</a>
-  </footer>
+  </div>
+  <div class="scrim" id="scrim" hidden></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
   <script src="assets/app.js"></script>

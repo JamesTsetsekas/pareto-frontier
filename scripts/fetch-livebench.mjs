@@ -120,21 +120,30 @@ async function main() {
     let effortRaw = m.effort || "";
     const paren = name.match(/^(.*?)\s*\(([^()]+)\)$/);
     if (paren && EFFORT[paren[2].toLowerCase()]) { name = paren[1]; effortRaw ||= paren[2]; }
-    series.push({ key, name, provider, released, ...(dated ? {} : { releasedApprox: true }), lbId: id });
+    // List price per 1M tokens, as LiveBench used it to compute cost.
+    const priceIn = num(c.input_price_per_million), priceOut = num(c.output_price_per_million);
+    const price = priceIn != null && priceOut != null ? { in: priceIn, out: priceOut } : undefined;
+    series.push({ key, name, provider, released, ...(dated ? {} : { releasedApprox: true }), ...(price ? { price } : {}), lbId: id });
     const effort = EFFORT[effortRaw.toLowerCase()] || "";
 
-    let totalCost = 0, totalTasks = 0, scoreSum = 0, complete = true;
+    // out_<suite> is the average number of output tokens per task in that suite.
+    let totalCost = 0, totalTasks = 0, scoreSum = 0, totalTokens = 0, complete = true, tokensComplete = true;
     for (const { col } of suites) {
       const score = num(row[col]);
       const spent = num(c[col]);
       const tasks = num(c["nq_" + col]);
+      const out = num(c["out_" + col]);
       if (score == null || spent == null || !tasks || spent <= 0) { complete = false; continue; }
-      points.push({ d: "lb_" + col, s: key, id: `${id}:${col}`, effort, score: score / 100, cost: spent / tasks });
+      const p = { d: "lb_" + col, s: key, id: `${id}:${col}`, effort, score: score / 100, cost: spent / tasks, costTotal: spent };
+      if (out != null && out > 0) { p.tokens = out; p.tokensTotal = out * tasks; totalTokens += out * tasks; } else tokensComplete = false;
+      points.push(p);
       totalCost += spent; totalTasks += tasks; scoreSum += score;
     }
     // Overall needs every suite, otherwise its cost isn't comparable.
     if (complete && suites.length) {
-      points.push({ d: "lb_overall", s: key, id: `${id}:overall`, effort, score: scoreSum / suites.length / 100, cost: totalCost / totalTasks });
+      const p = { d: "lb_overall", s: key, id: `${id}:overall`, effort, score: scoreSum / suites.length / 100, cost: totalCost / totalTasks, costTotal: totalCost };
+      if (tokensComplete) { p.tokens = totalTokens / totalTasks; p.tokensTotal = totalTokens; }
+      points.push(p);
     }
   }
 

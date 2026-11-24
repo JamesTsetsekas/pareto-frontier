@@ -32,12 +32,17 @@ jobs:
       - name: Fetch latest LiveBench release
         run: node scripts/fetch-livebench.mjs
 
+      - name: Fetch Artificial Analysis Intelligence Index
+        env:
+          AA_API_KEY: ${{ secrets.AA_API_KEY }} # free key; the step skips cleanly without it
+        run: node scripts/fetch-aa.mjs
+
       - name: Commit snapshots that changed
         run: |
           # fetchedAt changes every run; only commit files whose actual data changed.
           strip='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);delete j.fetchedAt;console.log(JSON.stringify(j))})'
           changed=""
-          for f in data/arc.json data/livebench.json; do
+          for f in data/arc.json data/livebench.json data/aa.json; do
             [ -f "$f" ] || continue
             if git cat-file -e "HEAD:$f" 2>/dev/null; then
               git diff --quiet -- "$f" && continue
