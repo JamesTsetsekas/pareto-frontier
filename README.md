@@ -1,28 +1,28 @@
 # Pareto Frontier Explorer
 
-Interactive score-vs-cost chart for AI models, with the Pareto frontier drawn on top: the set of models that no other model beats on both score and price. Data comes from independent leaderboards that measure what each model actually costs to run: [ARC Prize](https://arcprize.org/leaderboard), [LiveBench](https://livebench.ai/) and, once its API key is set, [Artificial Analysis](https://artificialanalysis.ai/).
+Interactive score-vs-cost charts for AI models, with the Pareto frontier drawn on top: the set of models that no other model beats on both score and price. Data comes from independent leaderboards that measure what each model actually costs to run: [Artificial Analysis](https://artificialanalysis.ai/), [ARC Prize](https://arcprize.org/leaderboard) and [LiveBench](https://livebench.ai/).
 
 **Live site:** https://jamestsetsekas.github.io/pareto-frontier/
 
 ## Features
 
 - Sources as tabs across the top, each with its benchmarks:
+  - **Artificial Analysis:** the Intelligence Index
   - **ARC Prize:** ARC-AGI-1, ARC-AGI-2, ARC-AGI-3, plus the public and private eval variants
   - **LiveBench:** Overall, plus each suite (Long Agentic, Reasoning, Coding, Browser, Data Analysis, Research, Design)
-  - **Artificial Analysis:** the Intelligence Index (appears once the API key is set)
-- Chart views:
-  - **Score vs cost**: one line per model through its reasoning-effort levels, with the Pareto frontier
+- Every chart on one scrolling page, each a full screen tall; the tabs jump between them and follow your scroll:
+  - **Cost vs intelligence** (score vs cost): one line per model through its reasoning-effort levels, with the Pareto frontier
   - **Tokens per task**: bars or a score-vs-tokens scatter with its own frontier (LiveBench)
-  - **Total tokens**, **Cost per task** and **Total cost**: bars per model, one shaded bar per effort level
-  - Views a source doesn't publish are greyed out
-- Filters in the side panel: reasoning effort (none → max), price tier (budget, mid, premium, by list price per million output tokens), and release date
+  - **Total tokens**, **Cost per task** and **Total cost**: bars per model, one shaded bar per effort level, with values on every bar
+  - Charts a source doesn't publish are left out and their tabs greyed out
+- Side panel: models grouped as **Frontier** (on this benchmark's Pareto frontier), **Notable** (the newest of the rest) and the full list behind "Show all models"; filters for reasoning effort (none → max), price tier (budget, mid, premium, by list price per million output tokens), and release date
 - A model's selection carries across benchmarks and sources. When switching source, the new source's own recommended models are added, so its newest models show up too
 - Hover shows a dashed crosshair in the model's color with axis readouts, and a detail card (score, cost, total cost, tokens, speed, and which frontier model beats it). The card docks in an empty corner of the chart. Click to pin it, with actions to show only that model, remove it, or open its source page
-- Brand-flavored provider colors (checked for colorblind safety), real provider logos, end labels on wide screens and a legend on phones
-- Options menu: labels on/off, group bars by model, highest last, CSV download, copy link. PNG download of whichever chart is showing
-- Zoom and pan on scatter charts (scroll or pinch, drag, double-click to reset), log or linear axis
+- Brand-flavored provider colors (checked for colorblind safety) with a shade per model, model names in their color at the line ends, real provider logos, and a legend on phones
+- Options menu: labels on/off, group bars by model, highest last, CSV download, copy link. PNG download of the chart in view
+- Zoom and pan on scatter charts (Ctrl or Cmd + scroll, pinch, drag, double-click to reset), log or linear axis
 - Add your own points to compare against the field
-- Shareable URLs: source, benchmark, view, selection, filters, and custom points are kept in the link
+- Shareable URLs: source, benchmark, chart, selection, filters, and custom points are kept in the link
 - Light and dark themes, a sortable data table, keyboard shortcut `/` to search models, and a layout that works on phones (the model list becomes a drawer)
 
 ## Data
@@ -56,7 +56,7 @@ npx http-server .                  # or any static server
 
 ### Artificial Analysis key
 
-The Artificial Analysis source needs a free API key. Create one on [artificialanalysis.ai](https://artificialanalysis.ai/api-reference#free-api), then add it as a repository secret named `AA_API_KEY` (Settings → Secrets and variables → Actions), or run `gh secret set AA_API_KEY`. The next workflow run fills in `data/aa.json` and the Artificial Analysis tab appears. Until then the fetcher skips cleanly. The free tier allows 100 requests a day; a refresh uses a few. The API terms require crediting Artificial Analysis, which the footer does whenever its data is on screen.
+The Artificial Analysis source needs a free API key, stored as the repository secret `AA_API_KEY` (Settings → Secrets and variables → Actions, or `gh secret set AA_API_KEY`). To use your own: create one on [artificialanalysis.ai](https://artificialanalysis.ai/api-reference#free-api) under API access. Without it the fetcher skips cleanly and keeps the last snapshot. The free tier allows 100 requests a day; a refresh uses a few. The API terms require crediting Artificial Analysis, which the footer does whenever its data is on screen.
 
 There's no build step and no dependencies. D3 v7 loads from cdnjs.
 
